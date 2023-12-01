@@ -1,0 +1,12 @@
+[package]
+name = "advent-of-code-2023"
+version = "0.1.0"
+edition = "2021"
+
+[[bin]]
+name = "d01"
+path = "src/d01/main.rs"
+
+
+[dependencies]
+itertools = "0.12.0"
