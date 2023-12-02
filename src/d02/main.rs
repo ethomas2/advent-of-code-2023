@@ -10,7 +10,7 @@ use nom::{
     IResult,
 };
 
-#[derive(Debug)]
+#[derive(Debug, Default)]
 struct CubeSet {
     red: u32,
     green: u32,
@@ -33,11 +33,7 @@ fn parse_cube_set(input: &str) -> IResult<&str, CubeSet> {
         Ok((input, (color_name, n)))
     })(input)?;
 
-    let mut cubeset = CubeSet {
-        red: 0,
-        green: 0,
-        blue: 0,
-    };
+    let mut cubeset: CubeSet = Default::default();
     for (cube_name, n) in cube_tuples {
         match cube_name {
             "red" => {
@@ -71,7 +67,7 @@ fn parse_line(input: &str) -> IResult<&str, Game> {
     Ok((input, Game { gameid, cube_sets }))
 }
 
-fn main() -> Result<(), Box<dyn Error>> {
+fn part1() -> Result<(), Box<dyn Error>> {
     let content = fs::read_to_string("src/d02/input")?;
     let sum: u32 = content
         .lines()
@@ -89,4 +85,28 @@ fn main() -> Result<(), Box<dyn Error>> {
         .sum();
     println!("{}", sum);
     Ok(())
+}
+
+fn part2() -> Result<(), Box<dyn Error>> {
+    let content = fs::read_to_string("src/d02/input")?;
+    let sum: u32 = content
+        .lines()
+        .map(|line| {
+            let (_, game) = all_consuming(parse_line)(line).unwrap();
+            let (mut minred, mut minblue, mut mingreen) = (0, 0, 0);
+            for CubeSet { red, green, blue } in game.cube_sets {
+                minred = u32::max(minred, red);
+                mingreen = u32::max(mingreen, green);
+                minblue = u32::max(minblue, blue);
+            }
+            minred * minblue * mingreen
+        })
+        .sum();
+    println!("{}", sum);
+    Ok(())
+}
+
+fn main() -> Result<(), Box<dyn Error>> {
+    // part1()
+    part2()
 }
