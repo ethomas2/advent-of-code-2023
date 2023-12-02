@@ -1,6 +1,6 @@
 [package]
 name = "advent-of-code-2023"
-version = "0.1.0"
+version = "0.1.69"
 edition = "2021"
 
 [[bin]]

@@ -4,47 +4,49 @@ use std::fs;
 use nom::{
     branch::alt,
     bytes::complete::tag,
-    character::complete::{space0, space1, u32 as nomu32},
+    character::complete::{space0, space1},
     combinator::{all_consuming, opt},
     multi::many1,
+    sequence::{preceded, terminated, tuple},
     IResult,
 };
 
-#[derive(Debug, Default)]
+#[derive(Debug, Default, PartialEq, Eq)]
 struct CubeSet {
     red: u32,
     green: u32,
     blue: u32,
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq)]
 struct Game {
     gameid: u32,
     cube_sets: Vec<CubeSet>,
 }
 
+/// Parse a single cube set. ie
+///  3 blue, 4 red
+///     or
+///  3 blue, 4 red, 5 green
 fn parse_cube_set(input: &str) -> IResult<&str, CubeSet> {
     let (input, cube_tuples) = many1(|input| -> IResult<&str, (&str, u32)> {
-        let (input, n) = nomu32(input)?;
-        let (input, _) = space1(input)?;
-        let (input, color_name) = alt((tag("red"), tag("blue"), tag("green")))(input)?;
-        let (input, _) = opt(tag(","))(input)?;
-        let (input, _) = space0(input)?;
+        let (input, (n, _, color_name, _, _)) = tuple((
+            nom::character::complete::u32,
+            space1,
+            alt((tag("red"), tag("blue"), tag("green"))),
+            opt(tag(",")),
+            space0,
+        ))(input)?;
+
         Ok((input, (color_name, n)))
     })(input)?;
 
     let mut cubeset: CubeSet = Default::default();
     for (cube_name, n) in cube_tuples {
         match cube_name {
-            "red" => {
-                cubeset.red = n;
-            }
-            "green" => {
-                cubeset.green = n;
-            }
-            "blue" => {
-                cubeset.blue = n;
-            }
+            "red" => cubeset.red = n,
+            "green" => cubeset.green = n,
+            "blue" => cubeset.blue = n,
             _ => unreachable!(),
         }
     }
@@ -52,19 +54,58 @@ fn parse_cube_set(input: &str) -> IResult<&str, CubeSet> {
     Ok((input, cubeset))
 }
 
+/// Parse a line, eg
+///         Game 1: 3 blue, 4 red; 1 red, 2 green, 6 blue
+/// becomes
+///         Game { gameid: 1, cube_sets: [CubeSet { red: 4, green: 0, blue: 3 }, CubeSet { red: 1, green: 2, blue: 6 }] }
 fn parse_line(input: &str) -> IResult<&str, Game> {
-    let (input, _) = tag("Game")(input)?;
-    let (input, _) = space1(input)?;
-    let (input, gameid) = nomu32(input)?;
-    let (input, _) = tag(":")(input)?;
-    let (input, _) = space1(input)?;
+    let (input, (_, _, gameid, _, _)) = tuple((
+        tag("Game"),
+        space1,
+        nom::character::complete::u32,
+        tag(":"),
+        space1,
+    ))(input)?;
+
     let (input, cube_sets) = many1(|input| -> IResult<&str, _> {
-        let (input, cubeset) = parse_cube_set(input)?;
-        let (input, _) = opt(tag(";"))(input)?;
-        let (input, _) = space0(input)?;
+        let (input, (cubeset, _, _)) = tuple((parse_cube_set, opt(tag(";")), space0))(input)?;
         Ok((input, cubeset))
     })(input)?;
     Ok((input, Game { gameid, cube_sets }))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn test1() {
+        let input = "Game 1: 3 blue, 4 red; 1 red, 2 green, 6 blue; 2 green";
+        let (_, game) = all_consuming(parse_line)(input).unwrap();
+        assert_eq!(
+            game,
+            Game {
+                gameid: 1,
+                cube_sets: vec![
+                    CubeSet {
+                        red: 4,
+                        green: 0,
+                        blue: 3,
+                    },
+                    CubeSet {
+                        red: 1,
+                        green: 2,
+                        blue: 6,
+                    },
+                    CubeSet {
+                        red: 0,
+                        green: 2,
+                        blue: 0,
+                    },
+                ],
+            }
+        );
+        println!("{:#?}", game);
+    }
 }
 
 fn part1() -> Result<(), Box<dyn Error>> {
@@ -72,7 +113,6 @@ fn part1() -> Result<(), Box<dyn Error>> {
     let sum: u32 = content
         .lines()
         .map(|line| {
-            // TODO: all_consuming.finish()?
             let (_, game) = all_consuming(parse_line)(line).unwrap();
             game
         })
