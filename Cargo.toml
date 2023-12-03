@@ -12,8 +12,12 @@ name = "d02"
 path = "src/d02/main.rs"
 
 [[bin]]
-name = "d03"
-path = "src/d03/main.rs"
+name = "d03-part1"
+path = "src/d03/part1.rs"
+
+[[bin]]
+name = "d03-part2"
+path = "src/d03/part2.rs"
 
 [dependencies]
 itertools = "0.12.0"
