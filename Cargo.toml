@@ -19,6 +19,10 @@ path = "src/d03/part1.rs"
 name = "d03-part2"
 path = "src/d03/part2.rs"
 
+[[bin]]
+name = "d04"
+path = "src/d04/main.rs"
+
 [dependencies]
 itertools = "0.12.0"
 nom = "7.1.3"
