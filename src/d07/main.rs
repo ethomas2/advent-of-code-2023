@@ -2,9 +2,10 @@ use std::error::Error;
 use std::fs;
 
 const HAND_SIZE: usize = 5;
+const JOKER: i8 = -1;
 
 #[derive(Debug)]
-struct Hand([u8; HAND_SIZE]);
+struct Hand([i8; HAND_SIZE]);
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord)]
 enum HandType {
@@ -49,7 +50,7 @@ mod test {
 
 impl Hand {
     fn parse(s: &str) -> Result<Self, String> {
-        let mut arr: [u8; HAND_SIZE] = Default::default();
+        let mut arr: [i8; HAND_SIZE] = Default::default();
         let mut iter = s.chars();
         for i in 0..5 {
             arr[i] = match iter.next().ok_or("oh no")? {
@@ -62,7 +63,7 @@ impl Hand {
                 '8' => Ok(8),
                 '9' => Ok(9),
                 'T' => Ok(10),
-                'J' => Ok(11),
+                'J' => Ok(JOKER),
                 'Q' => Ok(12),
                 'K' => Ok(13),
                 'A' => Ok(14),
@@ -71,8 +72,29 @@ impl Hand {
         }
         Ok(Hand(arr))
     }
-
     fn hand_type(&self) -> HandType {
+        // self.hand_type_no_joker()
+        let has_jokers = self.0.iter().any(|&x| x == JOKER);
+        if has_jokers {
+            let best_type = (2..=14)
+                .map(|x| {
+                    let mut cloned_arr = self.0.clone();
+                    for v in cloned_arr.iter_mut() {
+                        if *v == JOKER {
+                            *v = x
+                        }
+                    }
+                    Hand(cloned_arr).hand_type_no_joker()
+                })
+                .max()
+                .unwrap();
+            best_type
+        } else {
+            self.hand_type_no_joker()
+        }
+    }
+
+    fn hand_type_no_joker(&self) -> HandType {
         let mut sorted_arr = self.0.clone();
         sorted_arr.sort();
         let sorted_arr = sorted_arr;
@@ -146,6 +168,7 @@ impl Ord for Hand {
 
 fn main() -> Result<(), Box<dyn Error>> {
     let content = fs::read_to_string("src/d07/input")?;
+
     let mut hands_and_bids = content
         .lines()
         .map(|line| -> Result<_, Box<dyn Error>> {
