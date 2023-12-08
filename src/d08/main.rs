@@ -47,44 +47,81 @@ fn main() -> Result<(), Box<dyn Error>> {
     let content = fs::read_to_string("src/d08/input")?;
     let (_, (instructions, map)) = all_consuming(parse)(&content).unwrap();
 
-    let mut iterators = Vec::new();
-    for start in map.keys() {
-        if start.chars().nth(2).unwrap() == 'A' {
-            let mut current = *start;
-            let mut instruction_iterator = instructions.chars().cycle();
-            let map = &map;
-            let iter = std::iter::from_fn(move || {
-                let instruction = instruction_iterator.next().unwrap();
-                match instruction {
-                    'L' => current = &map.get(current).unwrap().0,
-                    'R' => current = &map.get(current).unwrap().1,
-                    _ => panic!("unexpected character {}", instruction),
-                };
-                Some(current)
-            });
-            // TODO: why don't i have to clone current
-            iterators.push(std::iter::once(current).chain(iter));
-        }
-    }
+    let mut current_values: Vec<_> = map
+        .keys()
+        .filter_map(|k| {
+            if k.chars().nth(2).unwrap() == 'Z' {
+                Some(*k)
+            } else {
+                None
+            }
+        })
+        .collect();
 
-    // think it might be slow now becaues i'm doing a bunch of memcopys instaed of just all
     let mut i: usize = 0;
-    let mut state = Vec::new();
-    loop {
-        state.truncate(0);
-        state.extend(iterators.iter_mut().map(|iter| iter.next().unwrap()));
-
+    for instruction in instructions.chars().cycle() {
+        current_values.iter_mut().for_each(|val| {
+            match instruction {
+                'L' => *val = &map.get(*val).unwrap().0,
+                'R' => *val = &map.get(*val).unwrap().1,
+                _ => panic!("unexpected character {}", instruction),
+            };
+        });
         i += 1;
+
         if i % 50_000_000 == 0 {
-            println!("{}", i);
+            println!("i {}", i);
         }
 
-        if state.iter().all(|x| x.chars().nth(2).unwrap() == 'Z') {
+        if current_values
+            .iter()
+            .all(|val| val.chars().nth(2).unwrap() == 'Z')
+        {
             break;
         }
     }
+    println!("i {}", i);
 
-    println!("Answer :: {}", i);
+    return Ok(());
 
-    Ok(())
+    // let mut iterators = Vec::new();
+    // for start in map.keys() {
+    //     if start.chars().nth(2).unwrap() == 'A' {
+    //         let mut current = *start;
+    //         let mut instruction_iterator = instructions.chars().cycle();
+    //         let map = &map;
+    //         let iter = std::iter::from_fn(move || {
+    //             let instruction = instruction_iterator.next().unwrap();
+    //             match instruction {
+    //                 'L' => current = &map.get(current).unwrap().0,
+    //                 'R' => current = &map.get(current).unwrap().1,
+    //                 _ => panic!("unexpected character {}", instruction),
+    //             };
+    //             Some(current)
+    //         });
+    //         // TODO: why don't i have to clone current
+    //         iterators.push(std::iter::once(current).chain(iter));
+    //     }
+    // }
+
+    // // think it might be slow now becaues i'm doing a bunch of memcopys instaed of just all
+    // let mut i: usize = 0;
+    // let mut state = Vec::new();
+    // loop {
+    //     state.truncate(0);
+    //     state.extend(iterators.iter_mut().map(|iter| iter.next().unwrap()));
+
+    //     i += 1;
+    //     if i % 50_000_000 == 0 {
+    //         println!("{}", i);
+    //     }
+
+    //     if state.iter().all(|x| x.chars().nth(2).unwrap() == 'Z') {
+    //         break;
+    //     }
+    // }
+
+    // println!("Answer :: {}", i);
+
+    // Ok(())
 }
