@@ -2,3 +2,8 @@
 Cargo.lock
 local.vim
 input
+lib
+example.html
+.ipynb_checkpoints
+.envrc
+notes.md
