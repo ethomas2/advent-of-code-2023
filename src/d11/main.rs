@@ -42,7 +42,7 @@ fn main() -> Result<(), Box<dyn Error>> {
                     .iter()
                     .filter(|&&c| c1.min(c2) < c && c < c1.max(c2))
                     .count();
-            s += manhattan_distance + extra_distance;
+            s += manhattan_distance + (1000000 - 1) * extra_distance;
         }
     }
 
