@@ -55,6 +55,10 @@ path = "src/d11/main.rs"
 name = "d12"
 path = "src/d12/main.rs"
 
+[[bin]]
+name = "d13"
+path = "src/d13/main.rs"
+
 [dependencies]
 itertools = "0.12.0"
 nom = "7.1.3"
