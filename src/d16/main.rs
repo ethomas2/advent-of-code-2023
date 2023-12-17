@@ -1,4 +1,6 @@
 #![allow(unused, dead_code)]
+
+use arrayvec::ArrayVec;
 use std::error::Error;
 use std::fmt;
 use std::fmt::{Display, Formatter};
@@ -50,18 +52,37 @@ enum Splitter {
     Vertical,
 }
 
+macro_rules! avec {
+    ($($dir:expr),*) => {{
+        let mut vec = ArrayVec::<Direction, 2>::new();
+        $( vec.push($dir); )*
+        vec
+    }};
+}
+
 impl Splitter {
     // TODO: use ArrayVec<2>
-    fn split(&self, dir: &Direction) -> Vec<Direction> {
+
+    fn split(&self, dir: &Direction) -> ArrayVec<Direction, 2> {
         match (self, dir) {
-            (&Splitter::Horizontal, &Direction::Up) => vec![Direction::Left, Direction::Right],
-            (&Splitter::Horizontal, &Direction::Down) => vec![Direction::Left, Direction::Right],
-            (&Splitter::Horizontal, &Direction::Left) => vec![Direction::Left],
-            (&Splitter::Horizontal, &Direction::Right) => vec![Direction::Right],
-            (&Splitter::Vertical, &Direction::Up) => vec![Direction::Up],
-            (&Splitter::Vertical, &Direction::Down) => vec![Direction::Down],
-            (&Splitter::Vertical, &Direction::Left) => vec![Direction::Up, Direction::Down],
-            (&Splitter::Vertical, &Direction::Right) => vec![Direction::Up, Direction::Down],
+            (Splitter::Horizontal, Direction::Up | Direction::Down) => {
+                avec!(Direction::Left, Direction::Right)
+            }
+            (Splitter::Horizontal, Direction::Left) => {
+                avec!(Direction::Left)
+            }
+            (Splitter::Horizontal, Direction::Right) => {
+                avec!(Direction::Right)
+            }
+            (Splitter::Vertical, Direction::Up) => {
+                avec!(Direction::Up)
+            }
+            (Splitter::Vertical, Direction::Down) => {
+                avec!(Direction::Down)
+            }
+            (Splitter::Vertical, Direction::Left | Direction::Right) => {
+                avec!(Direction::Up, Direction::Down)
+            }
         }
     }
 }
@@ -145,10 +166,10 @@ fn main() -> Result<(), Box<dyn Error>> {
     let grid = parse(&content);
 
     // beam_grid = Grid<[Direction; 4]>
-    let mut beam_grid: Grid<Vec<Direction>> = Grid {
+    let mut beam_grid: Grid<ArrayVec<Direction, 4>> = Grid {
         width: grid.width,
         height: grid.height,
-        items: vec![Vec::new(); grid.items.len()],
+        items: vec![ArrayVec::new(); grid.items.len()],
     };
     (*beam_grid.get_mut((0, 0).into())).push(Direction::Right);
 
@@ -166,27 +187,32 @@ fn main() -> Result<(), Box<dyn Error>> {
         for &(loc, dir) in beam_heads.iter() {
             // get new dirs
             let newdirs = match grid.get(loc) {
-                Space::Dot => vec![dir],
-                Space::Reflector(r) => vec![r.reflect(&dir)],
+                Space::Dot => avec![dir],
+                Space::Reflector(r) => avec![r.reflect(&dir)],
                 Space::Splitter(s) => s.split(&dir),
             };
             debug_assert!(newdirs.len() >= 1 && newdirs.len() <= 2);
 
             // advance the new beamheads
-            let new_beamheads: Vec<_> = newdirs
-                .iter()
-                .filter_map(|&newdir| {
-                    let newloc = loc.mv(&newdir)?;
-                    let _ = grid.contains_loc(newloc).then_some(())?;
-                    Some((newloc, newdir))
-                })
-                .collect();
+            let new_beamheads: ArrayVec<(Loc, Direction), 2> = {
+                let mut new_beamheads: ArrayVec<(Loc, Direction), 2> = ArrayVec::new();
+                newdirs
+                    .iter()
+                    .filter_map(|&newdir| {
+                        let newloc = loc.mv(&newdir)?;
+                        let _ = grid.contains_loc(newloc).then_some(())?;
+                        Some((newloc, newdir))
+                    })
+                    .for_each(|x| new_beamheads.push(x));
+                new_beamheads
+            };
+            // dbg!(new_beamheads.len());
 
             // update next next beam heads (for the next iteration)
             next_beam_heads.extend(new_beamheads.iter());
 
             // update beam_grid
-            for (newloc, newdir) in new_beamheads {
+            for &(newloc, newdir) in new_beamheads.iter() {
                 let grid_item = beam_grid.get_mut(newloc);
                 if !(*grid_item).contains(&newdir) {
                     (*grid_item).push(newdir);
