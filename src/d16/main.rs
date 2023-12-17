@@ -1,4 +1,5 @@
 use arrayvec::ArrayVec;
+use rayon::prelude::*;
 use std::error::Error;
 use std::fmt;
 use std::fmt::{Display, Formatter};
@@ -220,31 +221,31 @@ fn part1(grid: &Grid<Space>, startloc: Loc, startdir: Direction) -> usize {
 }
 
 fn part2(grid: &Grid<Space>) -> usize {
-    let mut answer = 0;
-    for c in 0..grid.width {
-        // top down
-        answer = answer.max(part1(grid, (0, c).into(), Direction::Down));
+    let top_down = (0..grid.width)
+        .into_par_iter()
+        .map(|c| part1(grid, (0, c).into(), Direction::Down));
 
-        // bottom up
-        answer = answer.max(part1(grid, (grid.height - 1, c).into(), Direction::Up));
+    // bottom up
+    let bottom_up = (0..grid.width)
+        .into_par_iter()
+        .map(|c| part1(grid, (grid.height - 1, c).into(), Direction::Up));
 
-        if c % 20 == 0 && c > 0 {
-            println!("Done with columns {}", c);
-        }
-    }
+    // left to right
+    let left_right = (0..grid.height)
+        .into_par_iter()
+        .map(|r| part1(grid, (r, 0).into(), Direction::Right));
 
-    for r in 0..grid.height {
-        // left to right
-        answer = answer.max(part1(grid, (r, 0).into(), Direction::Right));
+    // right to left
+    let right_left = (0..grid.height)
+        .into_par_iter()
+        .map(|r| part1(grid, (r, grid.width - 1).into(), Direction::Left));
 
-        // right to left
-        answer = answer.max(part1(grid, (r, grid.width - 1).into(), Direction::Left));
-
-        if r % 20 == 0 && r > 0 {
-            println!("Done with rows {}", r);
-        }
-    }
-    answer
+    top_down
+        .chain(bottom_up)
+        .chain(left_right)
+        .chain(right_left)
+        .max()
+        .unwrap()
 }
 
 fn main() -> Result<(), Box<dyn Error>> {
