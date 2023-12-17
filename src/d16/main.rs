@@ -1,5 +1,3 @@
-#![allow(unused, dead_code)]
-
 use arrayvec::ArrayVec;
 use std::error::Error;
 use std::fmt;
@@ -61,8 +59,6 @@ macro_rules! avec {
 }
 
 impl Splitter {
-    // TODO: use ArrayVec<2>
-
     fn split(&self, dir: &Direction) -> ArrayVec<Direction, 2> {
         match (self, dir) {
             (Splitter::Horizontal, Direction::Up | Direction::Down) => {
@@ -113,9 +109,9 @@ impl<T> Display for Grid<Vec<T>> {
             for c in 0..self.width {
                 let x = self.get((r, c).into());
                 let ch = if x.len() == 0 { '.' } else { '#' };
-                write!(f, "{}", ch);
+                write!(f, "{}", ch)?;
             }
-            writeln!(f);
+            writeln!(f)?;
         }
         Ok(())
     }
@@ -136,7 +132,7 @@ impl<T> Grid<T> {
 }
 
 fn parse(content: &str) -> Grid<Space> {
-    // TODO: change this to return REsult and get rid of panic! and unwrap()
+    // TODO: change this to return Result and get rid of panic! and unwrap()
     let items = Vec::from_iter(
         content
             .lines()
@@ -158,31 +154,21 @@ fn parse(content: &str) -> Grid<Space> {
         items,
     }
 }
-fn main() -> Result<(), Box<dyn Error>> {
-    // parse grid
-    // grid = Grid<Space>
-    // Space = Dot | Reflector { ForwardSlash, BackSlash } | Splitter {Horizontal, Vertical}
-    let content = fs::read_to_string("src/d16/input")?;
-    let grid = parse(&content);
 
+fn part1(grid: &Grid<Space>, startloc: Loc, startdir: Direction) -> usize {
     // beam_grid = Grid<[Direction; 4]>
     let mut beam_grid: Grid<ArrayVec<Direction, 4>> = Grid {
         width: grid.width,
         height: grid.height,
         items: vec![ArrayVec::new(); grid.items.len()],
     };
-    (*beam_grid.get_mut((0, 0).into())).push(Direction::Right);
+    (*beam_grid.get_mut(startloc)).push(Direction::Right);
 
     // beam_heads = Vec<(Loc, Direction)>
-    // TODO: maybe this should be a hashmap. I'm doing contains a lot
-    let mut beam_heads: Vec<(Loc, Direction)> = vec![((0, 0).into(), Direction::Right)];
+    let mut beam_heads: Vec<(Loc, Direction)> = vec![(startloc, startdir)];
     let mut next_beam_heads = Vec::new();
 
-    // TODO: why does this take so long? profile this
-    // loop { for each beam head advance it and mark it in the beam_grid. Break if beam_grid is
-    // unchanged }
     'outer: loop {
-        // TODO: make arrayvec
         let mut beam_grid_state_changed = false;
         for &(loc, dir) in beam_heads.iter() {
             // get new dirs
@@ -206,7 +192,6 @@ fn main() -> Result<(), Box<dyn Error>> {
                     .for_each(|x| new_beamheads.push(x));
                 new_beamheads
             };
-            // dbg!(new_beamheads.len());
 
             // update next next beam heads (for the next iteration)
             next_beam_heads.extend(new_beamheads.iter());
@@ -219,9 +204,6 @@ fn main() -> Result<(), Box<dyn Error>> {
                     beam_grid_state_changed = true;
                 }
             }
-
-            // optional: dedup beam heads
-            // TODO: implement
         }
 
         // break if beam grid unchanged
@@ -234,6 +216,48 @@ fn main() -> Result<(), Box<dyn Error>> {
             break;
         }
     }
-    println!("{}", beam_grid.items.iter().filter(|x| x.len() > 0).count());
+    beam_grid.items.iter().filter(|x| x.len() > 0).count()
+}
+
+fn part2(grid: &Grid<Space>) -> usize {
+    let mut answer = 0;
+    for c in 0..grid.width {
+        // top down
+        answer = answer.max(part1(grid, (0, c).into(), Direction::Down));
+
+        // bottom up
+        answer = answer.max(part1(grid, (grid.height - 1, c).into(), Direction::Up));
+
+        if c % 20 == 0 && c > 0 {
+            println!("Done with columns {}", c);
+        }
+    }
+
+    for r in 0..grid.height {
+        // left to right
+        answer = answer.max(part1(grid, (r, 0).into(), Direction::Right));
+
+        // right to left
+        answer = answer.max(part1(grid, (r, grid.width - 1).into(), Direction::Left));
+
+        if r % 20 == 0 && r > 0 {
+            println!("Done with rows {}", r);
+        }
+    }
+    answer
+}
+
+fn main() -> Result<(), Box<dyn Error>> {
+    // parse grid
+    // grid = Grid<Space>
+    // Space = Dot | Reflector { ForwardSlash, BackSlash } | Splitter {Horizontal, Vertical}
+    let content = fs::read_to_string("src/d16/input")?;
+    let grid = parse(&content);
+    let part1_answer = part1(&grid, (0, 0).into(), Direction::Right);
+    println!("part1 :: {}", part1_answer);
+
+    let part2_answer = part2(&grid);
+    println!("part2 :: {}", part2_answer);
+
     Ok(())
 }

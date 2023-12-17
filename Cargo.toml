@@ -71,8 +71,10 @@ path = "src/d15/main.rs"
 name = "d16"
 path = "src/d16/main.rs"
 
-[profile.release]
-debug = true
+[[bin]]
+name = "d17"
+path = "src/d17/main.rs"
+
 
 [dependencies]
 itertools = "0.12.0"
