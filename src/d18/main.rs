@@ -1,197 +1,18 @@
-use std::collections::HashSet;
 use std::error::Error;
 use std::fs;
 use std::hash::Hash;
 
-struct Grid {
-    locations: HashSet<Loc>,
-    minr: isize,
-    maxr: isize,
-    minc: isize,
-    maxc: isize,
-}
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-enum RawSpace {
-    Dot,
-    Hash,
-}
+struct Point(isize, isize);
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-enum Corner {
-    TopRight,
-    TopLeft,
-    BottomRight,
-    BottomLeft,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-enum Flat {
-    Vertical,
-    Horizontal,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-enum Space {
-    Dot,
-    Corner(Corner),
-    Flat(Flat),
-}
-
-impl Grid {
-    fn parse(content: &str) -> Result<Self, Box<dyn Error>> {
-        let instructions = parse(&content)?;
-        let locations = {
-            let mut locations: HashSet<Loc> = HashSet::new();
-            let mut start: Loc = Loc(0, 0);
-            locations.insert(start);
-            instructions.iter().for_each(|instruction| {
-                let Instruction { direction, num } = *instruction;
-                for _ in 0..num {
-                    start = start.mv(direction);
-                    locations.insert(start);
-                }
-            });
-            locations
-        };
-
-        let (minr, maxr, minc, maxc) = {
-            let (mut minr, mut maxr, mut minc, mut maxc) = (0, 0, 0, 0);
-            for &Loc(r, c) in locations.iter() {
-                minr = minr.min(r);
-                maxr = maxr.max(r);
-                minc = minc.min(c);
-                maxc = maxc.max(c);
-            }
-            (minr, maxr, minc, maxc)
-        };
-
-        Ok(Grid {
-            locations,
-            minr,
-            maxr,
-            minc,
-            maxc,
-        })
-    }
-
-    fn get_raw(&self, loc: Loc) -> RawSpace {
-        match &self.locations.contains(&loc) {
-            true => RawSpace::Hash,
-            false => RawSpace::Dot,
-        }
-    }
-
-    fn get(&self, loc: Loc) -> Space {
-        match self.get_raw(loc) {
-            RawSpace::Dot => Space::Dot,
-            RawSpace::Hash => {
-                let (up, down, left, right) = (
-                    self.get_raw(loc.mv(Direction::Up)),
-                    self.get_raw(loc.mv(Direction::Down)),
-                    self.get_raw(loc.mv(Direction::Left)),
-                    self.get_raw(loc.mv(Direction::Right)),
-                );
-                if up == RawSpace::Hash && down == RawSpace::Hash {
-                    Space::Flat(Flat::Vertical)
-                } else if right == RawSpace::Hash && left == RawSpace::Hash {
-                    Space::Flat(Flat::Horizontal)
-                } else if up == RawSpace::Hash && left == RawSpace::Hash {
-                    Space::Corner(Corner::TopLeft)
-                } else if up == RawSpace::Hash && right == RawSpace::Hash {
-                    Space::Corner(Corner::TopRight)
-                } else if down == RawSpace::Hash && left == RawSpace::Hash {
-                    Space::Corner(Corner::BottomLeft)
-                } else if down == RawSpace::Hash && right == RawSpace::Hash {
-                    Space::Corner(Corner::BottomRight)
-                } else {
-                    panic!("oh no");
-                }
-            }
-        }
-    }
-
-    fn get_area(&self) -> usize {
-        // sweep from left -> right
-        //
-        // if vert wall: flip
-        // if corner:
-        //     - set state last corner
-        // if horizontal wall assert that you've seen an odd number of corners
-        let mut area: usize = 0;
-        for r in self.minr..=self.maxr {
-            let mut inside = false;
-            let mut last_corner_opt: Option<Corner> = None;
-            for c in self.minc..=self.maxc {
-                let this_loc = self.get(Loc(r, c));
-                inside = match this_loc {
-                    Space::Dot => inside,                   // leave it unchanged
-                    Space::Flat(Flat::Vertical) => !inside, // flip it
-                    Space::Flat(Flat::Horizontal) => {
-                        debug_assert!(matches!(last_corner_opt, Some(_)));
-                        inside
-                    }
-                    Space::Corner(this_corner) => match last_corner_opt {
-                        // entering a horizontal run
-                        None => {
-                            last_corner_opt = Some(this_corner);
-                            inside
-                        }
-                        // exiting a horizontal run
-                        Some(last_corner) => {
-                            let x = match (last_corner, this_corner) {
-                                (Corner::TopRight, Corner::BottomLeft) => !inside,
-                                (Corner::TopRight, Corner::TopLeft) => inside,
-                                (Corner::BottomRight, Corner::TopLeft) => !inside,
-                                (Corner::BottomRight, Corner::BottomLeft) => inside,
-                                _ => panic!(
-                                    "oh no {:?}",
-                                    (last_corner, this_corner, r - self.minr, c - self.minc)
-                                ),
-                            };
-                            last_corner_opt = None;
-                            x
-                        }
-                    },
-                };
-
-                if matches!(this_loc, Space::Corner(_) | Space::Flat(_)) || inside {
-                    print!("#");
-                    area += 1;
-                } else {
-                    print!(".");
-                }
-            }
-            println!();
-        }
-        area
-    }
-
-    fn print_shell(&self) {
-        for r in self.minr..=self.maxr {
-            for c in self.minc..=self.maxc {
-                if self.locations.contains(&Loc(r, c)) {
-                    print!("#");
-                } else {
-                    print!(".");
-                }
-            }
-            println!();
-        }
-    }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-struct Loc(isize, isize);
-
-impl Loc {
-    fn mv(&self, dir: Direction) -> Loc {
-        let Loc(r, c) = *self;
+impl Point {
+    fn mv(&self, dir: Direction, n: isize) -> Self {
+        let Self(r, c) = *self;
         match dir {
-            Direction::Up => Loc(r - 1, c),
-            Direction::Left => Loc(r, c - 1),
-            Direction::Right => Loc(r, c + 1),
-            Direction::Down => Loc(r + 1, c),
+            Direction::Up => Self(r - n, c),
+            Direction::Left => Self(r, c - n),
+            Direction::Right => Self(r, c + n),
+            Direction::Down => Self(r + n, c),
         }
     }
 }
@@ -204,13 +25,36 @@ enum Direction {
     Down,
 }
 
+impl Direction {
+    fn turn_type(&self, nextdir: &Self) -> Option<TurnType> {
+        let turn_type = match (self, nextdir) {
+            (Self::Up, Self::Left)
+            | (Self::Right, Self::Up)
+            | (Self::Down, Self::Right)
+            | (Self::Left, Self::Down) => TurnType::CounterClockwise,
+            (Self::Up, Self::Right)
+            | (Self::Left, Self::Up)
+            | (Self::Down, Self::Left)
+            | (Self::Right, Self::Down) => TurnType::Clockwise,
+            _ => return None,
+        };
+        Some(turn_type)
+    }
+}
+
+#[derive(Debug, PartialEq, Eq)]
+enum TurnType {
+    Clockwise,
+    CounterClockwise,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 struct Instruction {
     direction: Direction,
     num: usize,
 }
 
-fn parse(content: &str) -> Result<Vec<Instruction>, Box<dyn Error>> {
+fn parse_instructions_part1(content: &str) -> Result<Vec<Instruction>, Box<dyn Error>> {
     let instructions: Vec<_> = content
         .lines()
         .map(|line| {
@@ -222,7 +66,7 @@ fn parse(content: &str) -> Result<Vec<Instruction>, Box<dyn Error>> {
                 "L" => Direction::Left,
                 "U" => Direction::Up,
                 "D" => Direction::Down,
-                _ => panic!("oh no"),
+                _ => panic!("unexpected character {}", direction),
             };
             let num: usize = num.parse().unwrap();
             Instruction { direction, num }
@@ -231,29 +75,152 @@ fn parse(content: &str) -> Result<Vec<Instruction>, Box<dyn Error>> {
     Ok(instructions)
 }
 
+fn parse_instructions_part2(content: &str) -> Result<Vec<Instruction>, Box<dyn Error>> {
+    let instructions: Vec<_> = content
+        .lines()
+        .map(|line| {
+            let parts: Vec<_> = line.split_ascii_whitespace().collect();
+            assert!(parts.len() == 3);
+            let x = parts[2];
+            let num = usize::from_str_radix(&x[2..7], 16).unwrap();
+            let dir = x[7..8].parse::<usize>().unwrap();
+            let direction = match dir {
+                0 => Direction::Right,
+                1 => Direction::Down,
+                2 => Direction::Left,
+                3 => Direction::Up,
+                _ => panic!("unexpected last character {}", dir),
+            };
+            Instruction { direction, num }
+        })
+        .collect();
+    Ok(instructions)
+}
+
+fn points_for_hash(upperleft: Point) -> [Point; 4] {
+    // let mut avec = ArrayVec::new();
+    let Point(r, c) = upperleft;
+    [
+        Point(r, c),
+        Point(r + 1, c),
+        Point(r, c + 1),
+        Point(r + 1, c + 1),
+    ]
+}
+
+/// Given a list of Instructions, compute the "bounding points" for the polygon carved out by these
+/// instructions. I.e. the set of points necessary to compute shoelace theorem
+fn get_bounding_points(instructions: &Vec<Instruction>) -> Vec<Point> {
+    // Terms:
+    //      hashpoint: The upper left point for the "bounding hash". Where a "bounding hash" is a
+    //      hash at which the diagram turns a corner. In the diagram below the hashpoints are
+    //      (0, 0), (0, 6), (5, 6), (5, 4), (7, 4), (7, 6) ...
+    //
+    //      bounding_point: A point that "bounds" the diagram. A bounding point always touches a
+    //      bounding hash, but is not necessarily the upper left point of the bounding hash (and
+    //      therefore is not necessarily a hashpoint). In the diagram below the bounding points are
+    //      (0, 0), (0, 7), (6, 7), (6, 5), (7, 5), (7, 7)
+    //
+    //  Example Diagram:
+    //
+    //          #######
+    //          #.....#
+    //          ###...#
+    //          ..#...#
+    //          ..#...#
+    //          ###.###
+    //          #...#..
+    //          ##..###
+    //          .#....#
+    //          .######
+    //
+    // Algorithm:
+    //     let hashpoint = (0, 0)
+    //     let polyloc = (0, 0)
+    //     for instruction in instructios
+    //          move hashpoint in the current direction n times
+    //          let turn_type = "the direction you will turn to follow the next instruction"
+    //          if turn_type == clockwise:
+    //              move bounding_point until it touches the "final" possible point that touches
+    //              this bounding hash
+    //          else if rotating counter clockwise:
+    //              move bounding_point until it touches the *first* possible point that touches
+    //              this bounding hash
+    //          record
+    let mut hashpoint = Point(0, 0);
+    let mut bounding_point = Point(0, 0);
+    let bounding_points = {
+        let mut bounding_points = Vec::new();
+        for (i, &instruction) in instructions.iter().enumerate() {
+            let Instruction { direction, num } = instruction;
+            // move hashpoint in the current direction n times
+            hashpoint = hashpoint.mv(direction, num.try_into().unwrap());
+
+            // compute turn_type (the direction you will be turning next)
+            let Instruction {
+                direction: nextdir, ..
+            } = instructions[(i + 1) % instructions.len()];
+            let turn_type = direction.turn_type(&nextdir).unwrap();
+
+            // update bounding point. You must at least walk until it touches the first possible
+            // point that touches this bounding hash
+            let hash_points = points_for_hash(hashpoint);
+            while !hash_points.contains(&bounding_point) {
+                bounding_point = bounding_point.mv(direction, 1);
+            }
+            // and go one more if it's turning away from you. This will still touch the bounding
+            // hash and will be the "final" possible point that touches this bounding hash
+            if matches!(turn_type, TurnType::Clockwise) {
+                bounding_point = bounding_point.mv(direction, 1);
+                debug_assert!(hash_points.contains(&bounding_point));
+            }
+            bounding_points.push(bounding_point);
+        }
+        bounding_points
+    };
+    bounding_points
+}
+
+/// compute a - b mod n. Rust's % is _remainder_, not _modululs_ (so it doesn't work on negative
+/// numbers).  -1 % 5 = -1 in rust. So do this hacky workaround
+fn sub_mod_n(a: usize, b: usize, n: usize) -> usize {
+    let a: isize = a.try_into().unwrap();
+    let b: isize = b.try_into().unwrap();
+    let n: isize = n.try_into().unwrap();
+    let x = a - b;
+    let ans = ((x % n) + n) % n;
+    ans.try_into().unwrap()
+}
+
+/// Compute shoelace theorem for the given points
+/// https://artofproblemsolving.com/wiki/index.php/Shoelace_Theorem
+fn shoelace(points: &Vec<Point>) -> usize {
+    let mut area = 0;
+    for (i, p) in points.iter().enumerate() {
+        let Point(r, _) = p;
+        let Point(_, c2) = points[(i + 1) % points.len()];
+        let Point(_, c0) = points[sub_mod_n(i, 1, points.len())];
+        area += (r * c2) - (r * c0);
+    }
+    area = area.abs() / 2;
+    area.try_into().unwrap()
+}
+
 fn main() -> Result<(), Box<dyn Error>> {
     // parse input -> instructions
     let content = fs::read_to_string("src/d18/input")?;
 
-    // parse to grid
-    // in grid:
-    //      identify each space as Corner(corner) or Wall(vert|horizontal)
-    let grid = Grid::parse(&content)?;
+    // part 1
+    let instructions = parse_instructions_part1(&content)?;
+    let points = get_bounding_points(&instructions);
+    let area = shoelace(&points);
+    println!("part 1 {:?}", area);
 
-    grid.print_shell();
-
-    println!();
-    println!();
-    println!();
-    let area = grid.get_area();
-
-    println!("part 1 {}", area);
-
-    // setup box
-
-    // print_shell(&locations, (minr, maxr, minc, maxc));
-
-    // sweep line Right -> Left (switch state)
+    // part 2
+    let instructions = parse_instructions_part2(&content)?;
+    let points = get_bounding_points(&instructions);
+    let area = shoelace(&points);
+    println!("part 2 {:?}", area);
 
     Ok(())
 }
