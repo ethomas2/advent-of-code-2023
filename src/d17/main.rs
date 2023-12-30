@@ -4,6 +4,7 @@ mod dijkstra;
 mod minheap;
 mod priorityqueue;
 use dijkstra::dijkstra;
+use itertools::Itertools;
 use std::error::Error;
 use std::fs;
 
@@ -43,13 +44,12 @@ enum Direction {
 }
 
 type Loc = (usize, usize);
-type Node = (Loc, (Direction, usize));
+type Part1Node = (Loc, (Direction, usize));
 
 fn get_children_fn_part1<'a, 'b>(
-    node: &'a Node,
+    node: &'a Part1Node,
     grid: &'b Grid<usize>,
-) -> impl Iterator<Item = (Node, usize)> + 'b {
-    // let children_fn = |node: &Node| {
+) -> impl Iterator<Item = (Part1Node, usize)> + 'b {
     use Direction::*;
 
     let &((r, c), (dir, run_length)) = node;
@@ -97,6 +97,70 @@ fn get_children_fn_part1<'a, 'b>(
 
     children
 }
+
+const ALL_DIRS: [Direction; 4] = [
+    Direction::Up,
+    Direction::Down,
+    Direction::Left,
+    Direction::Right,
+];
+
+type Part2Node = (Loc, Option<Direction>, usize);
+fn get_children_fn_part2<'a, 'b>(
+    node: &'a Part2Node,
+    grid: &'b Grid<usize>,
+) -> impl Iterator<Item = (Part2Node, usize)> + 'b {
+    let &((r, c), dir, runlength) = node;
+    let (r, c) = (r as isize, c as isize);
+
+    let mut candidate_nodes = Vec::new();
+    for newdir in ALL_DIRS {
+        let newloc = match newdir {
+            Direction::Up => (r - 1, c),
+            Direction::Down => (r + 1, c),
+            Direction::Left => (r, c - 1),
+            Direction::Right => (r, c + 1),
+        };
+        let new_runlength = if Some(newdir) == dir {
+            runlength + 1
+        } else {
+            1
+        };
+        candidate_nodes.push((newloc, Some(newdir), new_runlength));
+    }
+
+    let (width, height) = (grid.width as isize, grid.height as isize);
+    // if (r, c) == (4, 0) {
+    //     println!("{:?}", candidate_nodes);
+    // }
+    let nodes = candidate_nodes
+        .into_iter()
+        .filter(move |&((r, c), _, _)| 0 <= r && r < height && 0 <= c && c < width)
+        // TODO: can I remove the move here?
+        .filter(move |&(_, newdir, _)| {
+            if runlength < 4 {
+                dir.is_none() || newdir == dir
+            } else {
+                true
+            }
+        })
+        .filter(|&(_, _, runlength)| runlength <= 10)
+        .map(|((r, c), newdir, new_runlength)| {
+            let (r, c) = (r as usize, c as usize);
+            let weight = *grid.get((r, c));
+            let newnode = ((r, c), newdir, new_runlength);
+            (newnode, weight)
+        });
+
+    let (nodes, dbg_nodes) = nodes.tee();
+    let dbg_nodes: Vec<_> = dbg_nodes.collect();
+    // if (r, c) == (4, 0) {
+    //     println!("src {:?}  result {:?}", node, dbg_nodes);
+    // }
+
+    nodes
+}
+
 fn main() -> Result<(), Box<dyn Error>> {
     // parse graph -> Grid
     // Make graphs
@@ -111,24 +175,38 @@ fn main() -> Result<(), Box<dyn Error>> {
     let content = fs::read_to_string("src/d17/input")?;
     let grid = parse(&content);
 
-    let src = (0, 0);
-    let target = (grid.height - 1, grid.width - 1);
-    let children_fn = |n: &Node| get_children_fn_part1(n, &grid);
-    let (_, total_weight) = dijkstra(
-        (src, (Direction::Right, 0)),
-        |&(loc, _)| loc == target,
-        children_fn,
-    )
-    .path_to_target()
-    .unwrap();
+    // part 1
+    {
+        let src = (0, 0);
+        let target = (grid.height - 1, grid.width - 1);
+        let children_fn = |n: &Part1Node| get_children_fn_part1(n, &grid);
+        let (_, total_weight) = dijkstra(
+            (src, (Direction::Right, 0)),
+            |&(loc, _)| loc == target,
+            children_fn,
+        )
+        .path_to_target()
+        .unwrap();
 
-    // let locations: Vec<_> = path.iter().map(|x| x.0).collect();
-    // let values: Vec<_> = locations.iter().map(|&loc| grid.get(loc)).collect();
+        println!("{:?}", total_weight);
+    }
 
-    // println!("{:?}", path);
-    // println!("{:?}", values);
-    println!("{:?}", total_weight);
-    // let s = path.iter().map(|
+    // part 2
+    {
+        let src = ((0, 0), None, 0);
+        let target = (grid.height - 1, grid.width - 1);
+        let children_fn = |n: &Part2Node| get_children_fn_part2(n, &grid);
+        let (path, total_weight) = dijkstra(
+            src,
+            |&(loc, _, runlength)| loc == target && runlength >= 4,
+            children_fn,
+        )
+        .path_to_target()
+        .unwrap();
+
+        println!("{:?}", path);
+        println!("{:?}", total_weight);
+    }
 
     Ok(())
 }
