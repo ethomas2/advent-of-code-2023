@@ -40,7 +40,7 @@ pub fn parse_rule<'a>(input: &'a str) -> ParseResult<WorkflowRule<'a>> {
     let (input, gtlt) = alt((tag("<"), tag(">")))(input)?;
     let (input, val) = complete::u64(input)?;
     let (input, _) = tag(":")(input)?;
-    let (input, action) = alpha1(input)?;
+    let (input, dst) = alpha1(input)?;
     let attr = match attr {
         "x" => PartAttr::X,
         "m" => PartAttr::M,
@@ -53,10 +53,10 @@ pub fn parse_rule<'a>(input: &'a str) -> ParseResult<WorkflowRule<'a>> {
         "<" => GTorLT::LT,
         _ => Err(nom::Err::Error(CustomError("oh no".to_owned())))?,
     };
-    let action = match action {
+    let dst = match dst {
         "A" => Either::Left(AcceptReject::Accept),
         "R" => Either::Left(AcceptReject::Reject),
-        _ => Either::Right(action),
+        _ => Either::Right(dst),
     };
     let val: usize = val.try_into().unwrap();
     Ok((
@@ -65,7 +65,7 @@ pub fn parse_rule<'a>(input: &'a str) -> ParseResult<WorkflowRule<'a>> {
             attr,
             gtlt,
             val,
-            action,
+            dst,
         },
     ))
 }
