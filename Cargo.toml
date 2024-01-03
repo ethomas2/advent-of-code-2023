@@ -83,6 +83,10 @@ path = "src/d18/main.rs"
 name = "d19"
 path = "src/d19/main.rs"
 
+[[bin]]
+name = "d20"
+path = "src/d20/main.rs"
+
 
 
 [dependencies]
