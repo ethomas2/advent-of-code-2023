@@ -152,11 +152,11 @@ fn part2(workflows: &Vec<Workflow<'_>>, lbound: usize, ubound: usize) -> usize {
 // TODO: could you get this to return an iterator?
 /// Input: A range and a part of the graph to "DISPERSE" taht range through.
 /// Output: The set of all the tiny ranges
-fn split_range_through_graph(
-    range: NDRange,
+fn split_range_through_graph<const N: usize>(
+    range: NDRange<N>,
     wf_ident: WorkflowIdentifier,
     workflows: &Vec<Workflow<'_>>,
-) -> Vec<(NDRange, AcceptReject)> {
+) -> Vec<(NDRange<N>, AcceptReject)> {
     // Let's call this function DISPERSE. Psuedocode:
     //
     // DISPERSE(wf_ident, range) -> Vec<(Range, AcceptReject)> {
@@ -216,10 +216,10 @@ fn split_range_through_graph(
 ///     remain :: is the remaining part not handled by this rule (also possibly empty)
 ///
 /// Since this_range is all handled by one rule, also give the destination for this_range
-fn split<'a, 'b>(
-    range: NDRange,
+fn split<'a, 'b, const N: usize>(
+    range: NDRange<N>,
     rule: &'b WorkflowRule<'a>,
-) -> ((NDRange, WorkflowIdentifier<'a>), NDRange) {
+) -> ((NDRange<N>, WorkflowIdentifier<'a>), NDRange<N>) {
     let dimension: usize = match rule.attr {
         PartAttr::X => 0,
         PartAttr::M => 1,
