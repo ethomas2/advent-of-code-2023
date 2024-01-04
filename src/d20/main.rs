@@ -1,4 +1,6 @@
+use itertools::Itertools;
 use parse::{parse, ModuleType};
+use serde::Serialize;
 use std::collections::HashMap;
 use std::collections::VecDeque;
 use std::error::Error;
@@ -53,14 +55,35 @@ mod parse;
 type ModuleIdent<'a> = &'a str;
 type Connections<'a, 'b> = HashMap<ModuleIdent<'a>, &'b Vec<ModuleIdent<'a>>>;
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Serialize)]
 enum ModuleStateVal<'a> {
-    Broadcaster(Vec<ModuleIdent<'a>>),
+    Broadcaster,
     FlipFlop(bool),
     Conjunction(Vec<(ModuleIdent<'a>, bool)>),
 }
 
 type AllState<'a> = HashMap<ModuleIdent<'a>, ModuleStateVal<'a>>;
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    #[test]
+    fn test_to_json() {
+        let mut all_state = HashMap::new();
+
+        // Example data
+        all_state.insert("module1".to_string(), ModuleStateVal::Broadcaster);
+        all_state.insert("module2".to_string(), ModuleStateVal::FlipFlop(true));
+        all_state.insert(
+            "module3".to_string(),
+            ModuleStateVal::Conjunction(vec![("module4", false)]),
+        );
+
+        let serialized = serde_json::to_string(&all_state).unwrap();
+        println!("{}", serialized)
+    }
+}
 
 #[derive(Debug)]
 struct Pulse<'a> {
@@ -105,9 +128,9 @@ fn update_state<'a, 'b>(
         Some(x) => x,
     };
     let new_pulses: Vec<_> = match module_state {
-        ModuleStateVal::Broadcaster(connections) => {
+        ModuleStateVal::Broadcaster => {
             debug_assert!(dst == &"broadcaster");
-            connections
+            downstream_modules
                 .iter()
                 .map(|downstream| Pulse {
                     src: dst,
@@ -187,17 +210,15 @@ where
 fn main() -> Result<(), Box<dyn Error>> {
     let content = fs::read_to_string("src/d20/input")?;
     let (_, mmap) = parse(&content).unwrap();
-    println!("Parsed val {:#?}", mmap);
+    // println!("Parsed val {:#?}", mmap);
     let connections: Connections<'_, '_> = mmap.iter().map(|(src, (_, dst))| (*src, dst)).collect();
     let rev_connections = reverse_map(&connections);
-    let mut state: AllState<'_> = mmap
+    let state: AllState<'_> = mmap
         .iter()
         .map(|(src, (module_type, _))| {
             let key = src;
             let val = match *module_type {
-                ModuleType::Broadcaster => {
-                    ModuleStateVal::Broadcaster((*connections.get("broadcaster").unwrap()).clone())
-                }
+                ModuleType::Broadcaster => ModuleStateVal::Broadcaster,
                 ModuleType::FlipFlop => ModuleStateVal::FlipFlop(false),
                 ModuleType::Conjunction => ModuleStateVal::Conjunction(
                     rev_connections
@@ -212,22 +233,67 @@ fn main() -> Result<(), Box<dyn Error>> {
         })
         .collect();
 
-    // TODO: Investigate why I have to do this collect(). Something about can't allow captured
-    // variables to escpae a closure
-    let (mut low_pulses, mut high_pulses): (usize, usize) = (0, 0);
-    for pulse in (0..1000).flat_map(|_| push_button(&mut state, &connections).collect::<Vec<_>>()) {
-        if pulse.high_or_low {
-            high_pulses += 1;
-        } else {
-            low_pulses += 1;
+    // part 1
+    {
+        let (mut low_pulses, mut high_pulses): (usize, usize) = (0, 0);
+        let mut p1state = state.clone();
+        // TODO: Investigate why I have to do this collect(). Something about can't allow captured
+        // variables to escpae a closure
+        for pulse in
+            (0..1000).flat_map(|_| push_button(&mut p1state, &connections).collect::<Vec<_>>())
+        {
+            if pulse.high_or_low {
+                high_pulses += 1;
+            } else {
+                low_pulses += 1;
+            }
         }
+        println!(
+            "p1 high_pulses {} low_pulses::{} product::{}",
+            high_pulses,
+            low_pulses,
+            high_pulses * low_pulses
+        );
     }
-    println!(
-        "high_pulses {} low_pulses::{} product::{}",
-        high_pulses,
-        low_pulses,
-        high_pulses * low_pulses
-    );
+
+    // part 2
+    {
+        let mut button_presses: usize = 0;
+        let mut p2state = state.clone();
+        let intersting_nodes = ["qr", "lk", "lz", "ft"];
+        let mut interesting_nodes_periods: HashMap<_, usize> = HashMap::new();
+        'outer: loop {
+            button_presses += 1;
+            let activated_interesting_nodes = push_button(&mut p2state, &connections)
+                .filter_map(|pulse| {
+                    if intersting_nodes.contains(&pulse.src) && !pulse.high_or_low {
+                        return Some(pulse.src);
+                    }
+                    None
+                })
+                .sorted()
+                .dedup()
+                .collect::<Vec<_>>();
+            if activated_interesting_nodes.len() > 0 {
+                for node in activated_interesting_nodes {
+                    let x = interesting_nodes_periods.entry(node);
+                    x.or_insert(button_presses);
+                }
+            }
+
+            if interesting_nodes_periods.len() == 4 {
+                break 'outer;
+            }
+        }
+        println!("periods {:?}", &interesting_nodes_periods);
+        println!(
+            "p2 :: {}",
+            interesting_nodes_periods
+                .values()
+                .into_iter()
+                .product::<usize>()
+        );
+    }
 
     Ok(())
 }
