@@ -13,11 +13,9 @@ impl Range {
     }
 }
 
-// TODO: generalize this for ranges up to size 16. Ask chatgpt how. Use a macro?
-/// An NDRange ( [start1, end1), [start2, end2) ...). Forms an n-dimensional box. n is currently
-/// hardcoded to 4, but should be generialized with const generics
+/// An NDRange ( [start1, end1), [start2, end2) ...). Forms an n-dimensional box
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
-pub struct NDRange(pub [Range; 4]);
+pub struct NDRange<const N: usize>(pub [Range; N]);
 
 impl Range {
     pub fn split(&self, val: usize) -> (Self, Self) {
@@ -28,8 +26,8 @@ impl Range {
     }
 }
 
-impl NDRange {
-    pub fn new(data: [Range; 4]) -> Self {
+impl<const N: usize> NDRange<N> {
+    pub fn new(data: [Range; N]) -> Self {
         NDRange(data)
     }
     pub fn is_empty(&self) -> bool {
