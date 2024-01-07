@@ -92,6 +92,10 @@ name = "d21"
 path = "src/d21/main.rs"
 
 
+[profile.release]
+debug = true
+
+
 [dependencies]
 itertools = "0.12.0"
 nom = "7.1.3"
