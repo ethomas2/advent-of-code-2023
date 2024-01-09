@@ -112,6 +112,8 @@ impl<T: PartialOrd + Ord + PartialEq + Eq> Heap<T> {
 #[cfg(test)]
 mod test {
     use super::*;
+    use itertools::Itertools;
+    use std::mem;
 
     fn obeys_heap_property<T: Ord>(items: &[T]) -> bool {
         for i in 1..items.len() {
