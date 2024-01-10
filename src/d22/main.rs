@@ -1,17 +1,22 @@
 use itertools::Itertools;
-use std::collections::HashMap;
+use rayon::prelude::*;
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::error::Error;
 use std::fs;
-use std::rc::Rc;
+// use std::rc::Rc;
+use std::sync::Arc;
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq, Hash, Clone)] // TODO: clone is only needed for debugging
 struct Brick {
+    name: usize,
     xrange: std::ops::RangeInclusive<usize>,
     yrange: std::ops::RangeInclusive<usize>,
     zrange: std::ops::RangeInclusive<usize>,
 }
 
 fn parse(input: &str) -> Result<Vec<Brick>, String> {
+    // let mut names = 0..;
+    let mut names = 0..;
     let bricks: Vec<_> = input
         .lines()
         .map(|line| {
@@ -26,6 +31,7 @@ fn parse(input: &str) -> Result<Vec<Brick>, String> {
                     x1.min(x2)..=x1.max(x2)
                 });
             let brick = Brick {
+                name: names.next().unwrap(),
                 xrange: ranges.next().unwrap(),
                 yrange: ranges.next().unwrap(),
                 zrange: ranges.next().unwrap(),
@@ -59,6 +65,7 @@ impl Brick {
         );
         zrange = (zrange.start() - 1)..=(zrange.end() - 1);
         Brick {
+            name: self.name,
             xrange,
             yrange,
             zrange,
@@ -80,34 +87,32 @@ impl Brick {
 }
 
 fn bricks_above<'a>(
-    brick: &Rc<Brick>,
+    brick: &'a Brick,
     occupied_map: &'a OccupiedMap,
-) -> impl Iterator<Item = Rc<Brick>> + 'a + Clone {
-    let brick = brick.clone();
+) -> impl Iterator<Item = &'a Brick> + 'a + Clone {
     brick
         .locations()
         .filter_map(|(x, y, z)| occupied_map.get(&(x, y, z + 1)))
-        .sorted_by_key(|x| Rc::as_ptr(x))
-        .unique_by(|x| Rc::as_ptr(x))
-        .filter(move |brick_above| Rc::as_ptr(brick_above) != Rc::as_ptr(&brick))
-        .cloned()
+        .sorted_by_key(|x| Arc::as_ptr(x))
+        .unique_by(|x| Arc::as_ptr(x))
+        .filter(|brick_above| Arc::as_ptr(brick_above) != brick)
+        .map(|x| &**x)
 }
 
 fn bricks_below<'a>(
-    brick: &Rc<Brick>, // TODO: any reason this can't take an Rc?
+    brick: &'a Brick, // TODO: any reason this can't take an Rc?
     occupied_map: &'a OccupiedMap,
-) -> impl Iterator<Item = Rc<Brick>> + 'a {
-    let brick = brick.clone();
+) -> impl Iterator<Item = &'a Brick> + 'a {
     brick
         .locations()
         .filter_map(|(x, y, z)| occupied_map.get(&(x, y, z - 1)))
-        .sorted_by_key(|x| Rc::as_ptr(x))
-        .unique_by(|x| Rc::as_ptr(x))
-        .filter(move |brick_above| Rc::as_ptr(brick_above) != Rc::as_ptr(&brick))
-        .cloned()
+        .sorted_by_key(|x| Arc::as_ptr(x))
+        .unique_by(|x| Arc::as_ptr(x))
+        .filter(|brick_below| Arc::as_ptr(brick_below) != brick)
+        .map(|x| &**x)
 }
 
-fn integrity_check(bricks: &Vec<Rc<Brick>>, occupied_map: &OccupiedMap) {
+fn integrity_check(bricks: &Vec<Arc<Brick>>, occupied_map: &OccupiedMap) {
     #[cfg(debug_assertions)]
     {
         // each brick has all locations mapped to itself
@@ -122,37 +127,54 @@ fn integrity_check(bricks: &Vec<Rc<Brick>>, occupied_map: &OccupiedMap) {
     }
 }
 
-type OccupiedMap = HashMap<Loc, Rc<Brick>>;
+/// Returns if destroying this brick would cause things to fall
+/// A brick if "fragile" if at least one of the bricks above it has the property that this brick is
+/// the only brick below it
+fn is_fragile(brick: &Brick, occupied_map: &OccupiedMap) -> bool {
+    let mut bricks_above_me = bricks_above(brick, occupied_map);
+
+    // a brick is "fragile" (ie not destroyable) if at least one of the bricks above it has
+    // the property that this brick is the only brick below it
+    let fragile = bricks_above_me.any(|brick_above| {
+        // debug_assert!(bricks_below(&brick_above, &occupied_map)
+        //     .any(|below_above| Rc::as_ptr(&below_above) == Rc::as_ptr(&brick)));
+        bricks_below(&brick_above, occupied_map).count() == 1
+    });
+    fragile
+}
+
+type OccupiedMap = HashMap<Loc, Arc<Brick>>;
+
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
+enum CollapseState {
+    Collapsed,
+    Stable,
+}
+
+fn collapse_state(
+    brick: &Brick,
+    occupied_map: &OccupiedMap,
+    cache: &mut HashMap<&Brick, CollapseState>,
+) -> CollapseState {
+    if let Some(ans) = cache.get(brick) {
+        return *ans;
+    }
+
+    let all_below_collapsed = bricks_below(brick, occupied_map).count() > 0
+        && bricks_below(brick, occupied_map)
+            .all(|b| collapse_state(b, occupied_map, cache) == CollapseState::Collapsed);
+    if all_below_collapsed {
+        return CollapseState::Collapsed;
+    }
+
+    return CollapseState::Stable;
+}
 
 fn main() -> Result<(), Box<dyn Error>> {
-    // start at ~ 9:30
-    // code at ~ 10:08
-    // parsed at ~ 10:10
-    //
-    // read and parse input
-    // Brick { xrange, yrange, zrange }
-    //
-    // bricks.locations()
-    //
-    // - occupied = init_occupied_map()
-    //
-    // - fall(brick) -> brick
-    //    - get phantom brick dropped by n
-    //    - if all are unnocupied return new brick
-    //    - otherwise return none
-    //
-    // - fall_all(brick)
-    //      sorted_bricks <- sort by brick.zvalues().min()
-    //      for  b in sorted_bricks:
-    //          drop brick until it can't anymore
-    //
-    // - check destroyable
-    //      for each, remove it and see if fall moves it
-
     let content = fs::read_to_string("src/d22/input")?;
     let mut bricks: Vec<_> = parse(&content)?
         .into_iter()
-        .map(|brick| Rc::new(brick))
+        .map(|brick| Arc::new(brick))
         .collect();
     bricks.sort_by_key(|brick| *brick.zrange.start());
 
@@ -173,7 +195,7 @@ fn main() -> Result<(), Box<dyn Error>> {
                 match newbrick_opt {
                     None => break,
                     Some(newbrick) => {
-                        let newbrick = Rc::new(newbrick);
+                        let newbrick = Arc::new(newbrick);
                         brick.locations().for_each(|loc| {
                             occupied_map.remove(&loc);
                         });
@@ -189,19 +211,35 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     // check which ones are destroyable
     {
-        let destroyable_bricks = bricks.iter().filter(|brick| {
-            let mut bricks_above_me = bricks_above(&brick, &occupied_map);
-
-            // a brick is "fragile" (ie not destroyable) if at least one of the bricks above it has
-            // the property that this brick is the only brick below it
-            let fragile = bricks_above_me.any(|brick_above| {
-                // debug_assert!(bricks_below(&brick_above, &occupied_map)
-                //     .any(|below_above| Rc::as_ptr(&below_above) == Rc::as_ptr(&brick)));
-                bricks_below(&brick_above, &occupied_map).count() == 1
-            });
-            !fragile
-        });
+        let destroyable_bricks = bricks
+            .iter()
+            .filter(|&brick| !is_fragile(&**brick, &occupied_map));
         println!("p1 {}", destroyable_bricks.count());
+    }
+
+    // part 2: for each fragile brick determine how many bricks are above it
+    // Correct: 70727
+    {
+        let brick_refs: Vec<&Brick> = bricks.iter().map(|b| &**b).collect();
+        let p2: usize = brick_refs
+            .par_iter()
+            .map(|&brick_to_collapse| {
+                // TODO: turn cache in to Vec
+                let mut cache = HashMap::with_capacity(brick_refs.len() * 2);
+                cache.insert(brick_to_collapse, CollapseState::Collapsed);
+
+                let collapsed_brick_count = brick_refs
+                    .iter()
+                    .filter(|b| {
+                        let b = **b;
+                        collapse_state(b, &occupied_map, &mut cache) == CollapseState::Collapsed
+                    })
+                    .count();
+
+                collapsed_brick_count - 1
+            })
+            .sum();
+        println!("p2 {}", p2);
     }
 
     Ok(())

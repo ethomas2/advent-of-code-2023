@@ -95,6 +95,10 @@ path = "src/d21/main.rs"
 name = "d22"
 path = "src/d22/main.rs"
 
+[[bin]]
+name = "test"
+path = "src/test/main.rs"
+
 
 [profile.release]
 debug = true
